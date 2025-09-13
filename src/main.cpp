@@ -107,6 +107,53 @@ void setup()
   Serial1.begin(GEA2::baud, SERIAL_8N1, D10, D9);
   gea2.begin(Serial1);
   bridge.begin(mqttClient, Serial1, deviceId);
+
+  connectToMqtt();
+
+  struct ModelNumber {
+    char contents[32];
+  };
+  auto model_number = gea2.readERD<ModelNumber>(GEA2::broadcastAddress, 0x0001);
+  if(model_number.status == GEA2::ReadStatus::success) {
+    String topic = String(deviceId) + "/model_number";
+    mqttClient.publish(topic.c_str(), model_number.value.contents); // <-- Publish to MQTT
+  }
+  else {
+    Serial.printf("Failed to read Model Number\n");
+  }
+
+  struct SerialNumber {
+    char contents[32];
+  };
+  auto serial_number = gea2.readERD<SerialNumber>(GEA2::broadcastAddress, 0x0002);
+  if(serial_number.status == GEA2::ReadStatus::success) {
+    String topic = String(deviceId) + "/serial_number";
+    // char payload[33]; // 32 chars + null terminator
+    // snprintf(payload, sizeof(payload), "%.32s", serial_number.value.contents);
+    mqttClient.publish(topic.c_str(), serial_number.value.contents); // <-- Publish to MQTT
+  }
+  else {
+    Serial.printf("Failed to read Serial Number\n");
+  }
+
+  auto appliance_type = gea2.readERD<GEA2::U8>(GEA2::broadcastAddress, 0x0008);
+  if(appliance_type.status == GEA2::ReadStatus::success) {
+    String topic = String(deviceId) + "/appliance_type";
+    char payload[4];
+    snprintf(payload, sizeof(payload), "%u", static_cast<unsigned int>(appliance_type.value.read()));
+    mqttClient.publish(topic.c_str(), payload); // <-- Publish to MQTT
+  }
+  else {
+    Serial.printf("Failed to read Appliance Type\n");
+  }
+
+  auto personality = gea2.readERD<GEA2::U32>(GEA2::broadcastAddress, 0x0035);
+  if(personality.status == GEA2::ReadStatus::success) {
+    Serial.printf("Personality: %d\n", personality.value.read());
+  }
+  else {
+    Serial.printf("Failed to read Personality\n");
+  }
 }
 
 void loop()
@@ -120,50 +167,6 @@ void loop()
     lastPeriodicRun = millis();
 
     // --- Your code to run every 30 seconds ---
-    struct ModelNumber {
-      char contents[32];
-    };
-    auto model_number = gea2.readERD<ModelNumber>(GEA2::broadcastAddress, 0x0001);
-    if(model_number.status == GEA2::ReadStatus::success) {
-      String topic = String(deviceId) + "/model_number";
-      mqttClient.publish(topic.c_str(), model_number.value.contents); // <-- Publish to MQTT
-    }
-    else {
-      Serial.printf("Failed to read Model Number\n");
-    }
-
-    struct SerialNumber {
-      char contents[32];
-    };
-    auto serial_number = gea2.readERD<SerialNumber>(GEA2::broadcastAddress, 0x0002);
-    if(serial_number.status == GEA2::ReadStatus::success) {
-      String topic = String(deviceId) + "/serial_number";
-      // char payload[33]; // 32 chars + null terminator
-      // snprintf(payload, sizeof(payload), "%.32s", serial_number.value.contents);
-      mqttClient.publish(topic.c_str(), serial_number.value.contents); // <-- Publish to MQTT
-    }
-    else {
-      Serial.printf("Failed to read Serial Number\n");
-    }
-
-    auto appliance_type = gea2.readERD<GEA2::U8>(GEA2::broadcastAddress, 0x0008);
-    if(appliance_type.status == GEA2::ReadStatus::success) {
-      String topic = String(deviceId) + "/appliance_type";
-      char payload[4];
-      snprintf(payload, sizeof(payload), "%u", static_cast<unsigned int>(appliance_type.value.read()));
-      mqttClient.publish(topic.c_str(), payload); // <-- Publish to MQTT
-    }
-    else {
-      Serial.printf("Failed to read Appliance Type\n");
-    }
-
-    auto personality = gea2.readERD<GEA2::U32>(GEA2::broadcastAddress, 0x0035);
-    if(personality.status == GEA2::ReadStatus::success) {
-      Serial.printf("Personality: %d\n", personality.value.read());
-    }
-    else {
-      Serial.printf("Failed to read Personality\n");
-    }
 
     gea2.readERDAsync(
       GEA2::broadcastAddress, 0x0008, +[](GEA2::ReadStatus status, GEA2::U32 value) {
