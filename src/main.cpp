@@ -104,7 +104,7 @@ void clearPrefs() {
 }
 
 String vectorToJson(const std::vector<uint16_t>& vec) {
-  DynamicJsonDocument doc(1024); // adjust size if needed
+  DynamicJsonDocument doc(2048); // adjust size if needed
   JsonArray array = doc.to<JsonArray>();
 
   for(uint16_t val : vec) {
@@ -121,7 +121,7 @@ String vectorToJson(const std::vector<uint16_t>& vec) {
 std::vector<uint16_t> jsonToVector(String json) {
   // Convert valid addresses from JSON to vector
   std::vector<uint16_t> result;
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(2048);
   if(deserializeJson(doc, json) == DeserializationError::Ok) {
     JsonArray array = doc.as<JsonArray>();
     for(const char* s : array) {
@@ -307,13 +307,17 @@ void setup() {
     Serial.println("Setup previously completed. No action needed.");
   }
 
-  digitalWrite(LED_HEARTBEAT, HIGH);
   // Convert valid addresses to JSON and publish to MQTT
   jsonValidAddresses = vectorToJson(validAddresses);
   connectToMqtt();
   topic = String(deviceId) + "/valid_addresses";
-  mqttClient.publish(topic.c_str(), jsonValidAddresses.c_str()); // <-- Publish to MQTT
-  Serial.println("Valid addresses published to MQTT:");
+  if(mqttClient.publish(topic.c_str(), jsonValidAddresses.c_str())) {
+    Serial.println("Valid addresses published to MQTT:");
+  }
+  else {
+    Serial.println("MQTT Publish failed; payload too large");
+    Serial.println("Valid addresses not published to MQTT:");
+  };
   Serial.println(jsonValidAddresses);
 }
 
