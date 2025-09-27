@@ -272,75 +272,53 @@ void setup() {
   mqttClient.publish(topic.c_str(), applianceType.c_str()); // <-- Publish to MQTT
 
   // Scan all remaining addresses
-  for(size_t i = lastReadLoop; i < gea2AddressCount; i++) {
-    auto address = gea2Addresses[i];
-    auto result = gea2.readERD<GEA2::U32>(GEA2::broadcastAddress, address);
-    digitalWrite(LED_HEARTBEAT, i % 2 < 1);
-    if(result.status == GEA2::ReadStatus::success) {
-      Serial.printf("Successfully read ERD 0x%04X: 0x%08X (%u / %u)\n", address, result.value.read(), i + 1, gea2AddressCount);
-      validAddresses.push_back(address);
+  if(lastReadLoop < gea2AddressCount) {
+    for(size_t i = lastReadLoop; i < gea2AddressCount; i++) {
+      auto address = gea2Addresses[i];
+      auto result = gea2.readERD<GEA2::U32>(GEA2::broadcastAddress, address);
+      digitalWrite(LED_HEARTBEAT, i % 2 < 1);
+      if(result.status == GEA2::ReadStatus::success) {
+        Serial.printf("Successfully read ERD 0x%04X: 0x%08X (%u / %u)\n", address, result.value.read(), i + 1, gea2AddressCount);
+        validAddresses.push_back(address);
+      }
+      else {
+        Serial.printf("Failed to read ERD 0x%04X (%u / %u)\n", address, i + 1, gea2AddressCount);
+      }
+      // Save progress intermittently to preferences since this takes so long
+      if((i + 1) % 25 == 0) {
+        // Save loop count to Preferences
+        Serial.println("Saving Progress to Preferences");
+        prefs.begin("storage", false); // false = read/write
+        prefs.putUInt("lastReadLoop", i + 1);
+        prefs.end();
+        // Save discovered addresses to Preferences if new ones found
+        saveAddressesIfNeeded();
+      }
     }
-    else {
-      Serial.printf("Failed to read ERD 0x%04X (%u / %u)\n", address, i + 1, gea2AddressCount);
-    }
-    // Save progress intermittently to preferences since this takes so long
-    if((i + 1) % 25 == 0) {
-      // Save loop count to Preferences
-      Serial.println("Saving Progress to Preferences");
-      prefs.begin("storage", false); // false = read/write
-      prefs.putUInt("lastReadLoop", i + 1);
-      prefs.end();
-      // Save discovered addresses to Preferences if new ones found
-      saveAddressesIfNeeded();
-    }
-    // delay(5); // small delay to avoid overwhelming the bus
+    saveAddressesIfNeeded();
+    // Save step to Preferences so the loop is skipped next time
+    prefs.begin("storage", false); // false = read/write
+    prefs.putUInt("lastReadLoop", gea2AddressCount);
+    prefs.end();
+    Serial.printf("Address scan complete: %u valid addresses found\n", validAddresses.size());
+    Serial.println("Setup complete.");
+  }
+  else {
+    Serial.println("Setup previously completed. No action needed.");
   }
 
-  saveAddressesIfNeeded();
-  // Save step to Preferences so the loop is skipped next time
-  prefs.begin("storage", false); // false = read/write
-  prefs.putUInt("lastReadLoop", gea2AddressCount);
-  prefs.end();
-  Serial.printf("Address scan complete: %u valid addresses found\n", validAddresses.size());
-
+  digitalWrite(LED_HEARTBEAT, HIGH);
   // Convert valid addresses to JSON and publish to MQTT
   jsonValidAddresses = vectorToJson(validAddresses);
-  topic = String(deviceId) + "/valid_addresses";
   connectToMqtt();
+  topic = String(deviceId) + "/valid_addresses";
   mqttClient.publish(topic.c_str(), jsonValidAddresses.c_str()); // <-- Publish to MQTT
-  Serial.println("JSON Payload:");
+  Serial.println("Valid addresses published to MQTT:");
   Serial.println(jsonValidAddresses);
-  Serial.println("Setup complete.");
 }
 
 void loop() {
   connectToMqtt();
   bridge.loop();
   digitalWrite(LED_HEARTBEAT, millis() % 1000 < 500);
-
-  // Run code every 30 seconds
-  if(millis() - lastPeriodicRun == 30000) {
-    lastPeriodicRun = millis();
-
-    // --- Your code to run every 30 seconds ---
-
-    gea2.readERDAsync(
-      GEA2::broadcastAddress, 0x0008, +[](GEA2::ReadStatus status, GEA2::U32 value) {
-        if(status == GEA2::ReadStatus::success) {
-          Serial.printf("Successfully read ERD 0x0008 asynchronously: 0x%08X\n", value.read());
-        }
-        else {
-          Serial.printf("Failed to read ERD 0x0008 asynchronously\n");
-        }
-      });
-
-    auto result = gea2.readERD<GEA2::U32>(GEA2::broadcastAddress, 0x0008);
-    if(result.status == GEA2::ReadStatus::success) {
-      Serial.printf("Successfully read ERD 0x0008: 0x%08X\n", result.value.read());
-    }
-    else {
-      Serial.printf("Failed to read ERD 0x0008\n");
-    }
-    // -----------------------------------------
-  }
 }
