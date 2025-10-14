@@ -200,23 +200,7 @@ String readApplianceType() {
   }
 }
 
-void setup() {
-  Serial.begin(115200);
-  Serial.println();
-
-  pinMode(LED_HEARTBEAT, OUTPUT);
-  pinMode(LED_WIFI, OUTPUT);
-  pinMode(LED_MQTT, OUTPUT);
-
-  configureWifi();
-  configureMqtt();
-
-  Serial1.begin(GEA2::baud, SERIAL_8N1, D10, D9);
-  gea2.begin(Serial1);
-  bridge.begin(mqttClient, Serial1, deviceId);
-
-  delay(5000); // wait 5 seconds to allow monitor to connect so we can see output from the start
-
+void setUpErds() {
   String applianceModel = readApplianceModel();
   String applianceSerial = readApplianceSerial();
   String applianceType = readApplianceType();
@@ -276,7 +260,6 @@ void setup() {
     for(size_t i = lastReadLoop; i < gea2AddressCount; i++) {
       auto address = gea2Addresses[i];
       auto result = gea2.readERD<GEA2::U32>(GEA2::broadcastAddress, address);
-      digitalWrite(LED_HEARTBEAT, i % 2 < 1);
       if(result.status == GEA2::ReadStatus::success) {
         Serial.printf("Successfully read ERD 0x%04X: 0x%08X (%u / %u)\n", address, result.value.read(), i + 1, gea2AddressCount);
         validAddresses.push_back(address);
@@ -284,8 +267,11 @@ void setup() {
       else {
         Serial.printf("Failed to read ERD 0x%04X (%u / %u)\n", address, i + 1, gea2AddressCount);
       }
+
+      digitalWrite(LED_HEARTBEAT, i % 2 < 1);
+
       // Save progress intermittently to preferences since this takes so long
-      if((i + 1) % 25 == 0) {
+      if((i + 1) % 100 == 0) {
         // Save loop count to Preferences
         Serial.println("Saving Progress to Preferences");
         prefs.begin("storage", false); // false = read/write
@@ -295,6 +281,7 @@ void setup() {
         saveAddressesIfNeeded();
       }
     }
+    // Final save of any remaining discovered addresses
     saveAddressesIfNeeded();
     // Save step to Preferences so the loop is skipped next time
     prefs.begin("storage", false); // false = read/write
@@ -319,6 +306,26 @@ void setup() {
     Serial.println("Valid addresses not published to MQTT:");
   };
   Serial.println(jsonValidAddresses);
+}
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println();
+
+  pinMode(LED_HEARTBEAT, OUTPUT);
+  pinMode(LED_WIFI, OUTPUT);
+  pinMode(LED_MQTT, OUTPUT);
+
+  configureWifi();
+  configureMqtt();
+
+  Serial1.begin(GEA2::baud, SERIAL_8N1, D10, D9);
+  gea2.begin(Serial1);
+  bridge.begin(mqttClient, Serial1, deviceId);
+
+  delay(5000); // wait 5 seconds to allow monitor to connect so we can see output from the start
+
+  setUpErds();
 }
 
 void loop() {
