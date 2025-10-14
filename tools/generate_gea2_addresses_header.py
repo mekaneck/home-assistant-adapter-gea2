@@ -31,10 +31,10 @@ def generate_header():
         print(addresses)
 
         with open(output_file, "w") as f:
-            f.write("#ifndef ADDRESSES_H\n")
-            f.write("#define ADDRESSES_H\n\n")
+            f.write("#ifndef GEA2_ADDRESSES_H\n")
+            f.write("#define GEA2_ADDRESSES_H\n\n")
             f.write("#include <cstdint>\n\n")
-            f.write("const uint32_t memoryAddresses[] = {\n")
+            f.write("const uint32_t gea2Addresses[] = {\n")
 
             # Write each address
             for i, addr in enumerate(addresses):
@@ -42,8 +42,8 @@ def generate_header():
                 f.write(f"    {addr}{line_end}")
 
             f.write("};\n\n")
-            f.write("const uint32_t memoryAddressCount = sizeof(memoryAddresses) / sizeof(memoryAddresses[0]);\n\n")
-            f.write("#endif // ADDRESSES_H\n")
+            f.write("const uint32_t gea2AddressCount = sizeof(gea2Addresses) / sizeof(gea2Addresses[0]);\n\n")
+            f.write("#endif // GEA2_ADDRESSES_H\n")
 
         print(f"Header file '{output_file}' generated with {len(addresses)} addresses.")
 

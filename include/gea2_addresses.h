@@ -1,9 +1,9 @@
-#ifndef ADDRESSES_H
-#define ADDRESSES_H
+#ifndef GEA2_ADDRESSES_H
+#define GEA2_ADDRESSES_H
 
 #include <cstdint>
 
-const uint32_t memoryAddresses[] = {
+const uint32_t gea2Addresses[] = {
     0x0001,
     0x0002,
     0x0004,
@@ -2392,6 +2392,6 @@ const uint32_t memoryAddresses[] = {
     0xd207
 };
 
-const uint32_t memoryAddressCount = sizeof(memoryAddresses) / sizeof(memoryAddresses[0]);
+const uint32_t gea2AddressCount = sizeof(gea2Addresses) / sizeof(gea2Addresses[0]);
 
-#endif // ADDRESSES_H
+#endif // GEA2_ADDRESSES_H
