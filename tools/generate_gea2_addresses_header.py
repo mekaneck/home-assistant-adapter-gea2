@@ -4,6 +4,7 @@ try:
     from SCons.Script import Import  # type: ignore
     Import("env")
     PIO_MODE = True
+    print("🔧 Running inside PlatformIO build environment.")
 except ImportError:
     env = None
     PIO_MODE = False
