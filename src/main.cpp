@@ -200,23 +200,7 @@ String readApplianceType() {
   }
 }
 
-void setup() {
-  Serial.begin(115200);
-  Serial.println();
-
-  pinMode(LED_HEARTBEAT, OUTPUT);
-  pinMode(LED_WIFI, OUTPUT);
-  pinMode(LED_MQTT, OUTPUT);
-
-  configureWifi();
-  configureMqtt();
-
-  Serial1.begin(GEA2::baud, SERIAL_8N1, D10, D9);
-  gea2.begin(Serial1);
-  bridge.begin(mqttClient, Serial1, deviceId);
-
-  delay(5000); // wait 5 seconds to allow monitor to connect so we can see output from the start
-
+void setUpErds() {
   String applianceModel = readApplianceModel();
   String applianceSerial = readApplianceSerial();
   String applianceType = readApplianceType();
@@ -272,20 +256,35 @@ void setup() {
   mqttClient.publish(topic.c_str(), applianceType.c_str()); // <-- Publish to MQTT
 
   // Scan all remaining addresses
-  if(lastReadLoop < gea2AddressCount) {
-    for(size_t i = lastReadLoop; i < gea2AddressCount; i++) {
+  if(0 < 1) {
+  // if(lastReadLoop < gea2AddressCount) {
+    // for(size_t i = lastReadLoop; i < gea2AddressCount; i++) {
+    for(size_t i = 550; i < 620; i++) {
       auto address = gea2Addresses[i];
-      auto result = gea2.readERD<GEA2::U32>(GEA2::broadcastAddress, address);
+      Serial.printf("Scanning address %u / %u: 0x%04X\n", i + 1, gea2AddressCount, address);
+      gea2.readERDAsync(
+        GEA2::broadcastAddress, address, +[](GEA2::ReadStatus status, GEA2::U32 value) {
+          if(status == GEA2::ReadStatus::success) {
+            Serial.printf("Successfully read ERD: 0x%08X\n", value.read());
+          }
+          else {
+            Serial.printf("Failed to read ERD asynchronously\n");
+          }
+        });
+
+      delay(50); // small delay to avoid overwhelming the bus
       digitalWrite(LED_HEARTBEAT, i % 2 < 1);
-      if(result.status == GEA2::ReadStatus::success) {
-        Serial.printf("Successfully read ERD 0x%04X: 0x%08X (%u / %u)\n", address, result.value.read(), i + 1, gea2AddressCount);
-        validAddresses.push_back(address);
-      }
-      else {
-        Serial.printf("Failed to read ERD 0x%04X (%u / %u)\n", address, i + 1, gea2AddressCount);
-      }
+
+      // auto result = gea2.readERD<GEA2::U32>(GEA2::broadcastAddress, address);
+      // if(result.status == GEA2::ReadStatus::success) {
+      //   Serial.printf("Successfully read ERD 0x%04X: 0x%08X (%u / %u)\n", address, result.value.read(), i + 1, gea2AddressCount);
+      //   validAddresses.push_back(address);
+      // }
+      // else {
+      //   Serial.printf("Failed to read ERD 0x%04X (%u / %u)\n", address, i + 1, gea2AddressCount);
+      // }
       // Save progress intermittently to preferences since this takes so long
-      if((i + 1) % 25 == 0) {
+      if((i + 1) % 1000 == 0) {
         // Save loop count to Preferences
         Serial.println("Saving Progress to Preferences");
         prefs.begin("storage", false); // false = read/write
@@ -295,7 +294,7 @@ void setup() {
         saveAddressesIfNeeded();
       }
     }
-    saveAddressesIfNeeded();
+    // saveAddressesIfNeeded();
     // Save step to Preferences so the loop is skipped next time
     prefs.begin("storage", false); // false = read/write
     prefs.putUInt("lastReadLoop", gea2AddressCount);
@@ -321,8 +320,127 @@ void setup() {
   Serial.println(jsonValidAddresses);
 }
 
+void setup() {
+  Serial.begin(115200);
+  Serial.println();
+
+  pinMode(LED_HEARTBEAT, OUTPUT);
+  pinMode(LED_WIFI, OUTPUT);
+  pinMode(LED_MQTT, OUTPUT);
+
+  configureWifi();
+  configureMqtt();
+
+  Serial1.begin(GEA2::baud, SERIAL_8N1, D10, D9);
+  bridge.begin(mqttClient, Serial1, deviceId);
+  gea2.begin(Serial1);
+
+  delay(5000); // wait 5 seconds to allow monitor to connect so we can see output from the start
+
+  setUpErds();
+
+  gea2.onPacketReceived(+[](const GEA2::Packet& packet) {
+    const uint8_t* payload = packet.payload();
+    size_t length = packet.payloadLength();
+
+    // if (!payload || length < 3) return; // need at least status + ERD ID
+    // Serial.print("Raw payload (length ");
+    // Serial.print(length);
+    // Serial.print("): ");
+
+    // for (size_t i = 0; i < length; i++) {
+    //     Serial.printf("%02X ", payload[i]);
+    // }
+
+    // Serial.println();
+
+    if (!payload || length < 5) return; // must have at least source + status + ERD ID + size
+
+    // Source
+    uint8_t source = payload[0];
+
+    // Status
+    uint8_t status = payload[1];
+
+    // ERD ID (big-endian)
+    uint16_t erdId = (static_cast<uint16_t>(payload[2]) << 8) | payload[3];
+
+    // Size of value
+    uint8_t valueSize = payload[4];
+
+    // Check that payload length matches expected size
+    if (length < 5 + valueSize) {
+        Serial.printf("Error: payload length (%d) is smaller than expected value size (%d)\n",
+                      length, valueSize);
+        return;
+    }
+
+    // Extract value bytes
+    char hexStr[valueSize * 2 + 1]; // 2 hex chars per byte + null terminator
+    for (size_t i = 0; i < valueSize; i++) {
+        sprintf(&hexStr[i * 2], "%02X", payload[i + 5]);
+    }
+    hexStr[valueSize * 2] = '\0';
+
+    // Convert value bytes to decimal (big-endian)
+    uint64_t decimalValue = 0;
+    for (size_t i = 0; i < valueSize; i++) {
+        decimalValue = (decimalValue << 8) | payload[i + 5];
+    }
+
+    // Print all
+    Serial.printf("Source: 0x%02X, Status: %s, ERD: 0x%04X, Value size: %d, Value: 0x%s (%llu)\n",
+                  source,
+                  status == 0 ? "FAILED" : "SUCCESS",
+                  erdId,
+                  valueSize,
+                  hexStr,
+                  decimalValue);
+
+
+    // // Optional: publish to MQTT as JSON
+    // DynamicJsonDocument doc(256);
+    // doc["erdId"] = erdId;
+    // doc["value"] = hexStr;
+
+    // String jsonPayload;
+    // serializeJson(doc, jsonPayload);
+    // mqttClient.publish("esp32/erdUpdates", jsonPayload.c_str());
+    
+  });
+
+  // for(auto address : validAddresses) {
+  //   gea2.readERDAsync(
+  //     GEA2::broadcastAddress, address, +[](GEA2::ReadStatus status, GEA2::U32 value) {
+  //       if(status == GEA2::ReadStatus::success) {
+  //         Serial.printf("Successfully read ERD 0x0035 asynchronously from 0x%02X: 0x%08X\n", address, value.read());
+  //       }
+  //       else {
+  //         Serial.printf("Failed to read ERD 0x0035 asynchronously from 0x%02X\n", address);
+  //       }
+  //     });
+  // }
+
+  // gea2.sendPacket(GEA2::Packet(0xE4, GEA2::broadcastAddress, { 0x01 }));
+
+  // gea2.onPacketReceived(+[](const GEA2::Packet& packet) {
+  //   Serial.printf("Packet received from 0x%04X\n", packet.source());
+  //   Serial.printf("  Payload (%u bytes)\n", packet.payloadLength());
+  //   Serial.printf("Packet payload: 0x%0*X\n", packet.payloadLength() * 2, packet.payload());
+  //   for(size_t i = 0; i < packet.payloadLength(); i++) {
+  //     Serial.printf(" %02X", packet.payload()[i]);
+  //   }
+  //   Serial.println();
+  // });
+}
+
 void loop() {
-  connectToMqtt();
-  bridge.loop();
-  digitalWrite(LED_HEARTBEAT, millis() % 1000 < 500);
+  // connectToMqtt();
+  if(!mqttClient.connected()) {
+    connectToMqtt(); // only reconnect if disconnected
+  }
+  mqttClient.loop();
+  // bridge.loop();
+  gea2.loop();
+  digitalWrite(LED_HEARTBEAT, millis() % 500 < 250);
 }
