@@ -1,3 +1,10 @@
+# Repository is archived.
+A better implementation has been developed and therefore no further development is planned in this repository.
+Please refer to the following repository for a fully-functional GEA2 adapter firmware: 
+https://github.com/paulgoodjohn/home-assistant-adapter
+
+___
+
 # home-assistant-adapter
 Firmware for the ESP32C3-based Home Assistant Adapter.
 
